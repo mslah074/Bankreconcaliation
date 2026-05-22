@@ -1,0 +1,6 @@
+{
+  "name": "Bank Reconciliation Tool",
+  "description": "An advanced bank reconciliation tool featuring high-performance matching algorithms, fuzzy search, and multi-threaded background Web Worker computation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
