@@ -1294,7 +1294,28 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
           throw new Error("STATIONARY_HOST_ERROR");
         }
 
-        data = await response.json();
+        const responseText = await response.text();
+        if (!response.ok) {
+          let errMsg = `Server returned status ${response.status}`;
+          try {
+            const errJson = JSON.parse(responseText);
+            if (errJson && errJson.error) {
+              errMsg += `: ${errJson.error}`;
+            }
+          } catch (_) {
+            if (responseText) {
+              errMsg += `: ${responseText.slice(0, 150)}`;
+            }
+          }
+          throw new Error(errMsg);
+        }
+
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          throw new Error(`Failed to parse server response as JSON. Body preview: ${responseText.slice(0, 150)}`);
+        }
+
         if (!data.success) {
           throw new Error(data.error || "An error occurred with Gemini");
         }

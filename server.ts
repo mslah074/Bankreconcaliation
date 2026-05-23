@@ -119,59 +119,118 @@ ${JSON.stringify(
 
 Find up to 15 best proposed matches. Double check that every ID references an actual item index in the lists. Always output in the requested JSON structure.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["matches"],
-          properties: {
-            matches: {
-              type: Type.ARRAY,
-              description: "Array of recommended matches found by Gemini",
-              items: {
-                type: Type.OBJECT,
-                required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
-                properties: {
-                  type: {
-                    type: Type.STRING,
-                    description: "One of: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'",
-                  },
-                  bankOrigIdxs: {
-                    type: Type.ARRAY,
-                    items: { type: Type.INTEGER },
-                    description: "Original index integers (_origIdx) from the Bank Statement",
-                  },
-                  sysOrigIdxs: {
-                    type: Type.ARRAY,
-                    items: { type: Type.INTEGER },
-                    description: "Original index integers (_origIdx) from the System ledger",
-                  },
-                  confidence: {
-                    type: Type.INTEGER,
-                    description: "Reconciliation match confidence percentage from 0 to 100",
-                  },
-                  reasonAr: {
-                    type: Type.STRING,
-                    description: "Short Arabic explanation of the match logic, targeting human reviewer (max 15 words)",
-                  },
-                  reasonEn: {
-                    type: Type.STRING,
-                    description: "Short English explanation of the match logic, targeting human reviewer (max 15 words)",
+    let response;
+    let fallbackError: any = null;
+
+    try {
+      // First try with highly recommended, stable gemini-2.5-flash
+      response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            required: ["matches"],
+            properties: {
+              matches: {
+                type: Type.ARRAY,
+                description: "Array of recommended matches found by Gemini",
+                items: {
+                  type: Type.OBJECT,
+                  required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
+                  properties: {
+                    type: {
+                      type: Type.STRING,
+                      description: "One of: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'",
+                    },
+                    bankOrigIdxs: {
+                      type: Type.ARRAY,
+                      items: { type: Type.INTEGER },
+                      description: "Original index integers (_origIdx) from the Bank Statement",
+                    },
+                    sysOrigIdxs: {
+                      type: Type.ARRAY,
+                      items: { type: Type.INTEGER },
+                      description: "Original index integers (_origIdx) from the System ledger",
+                    },
+                    confidence: {
+                      type: Type.INTEGER,
+                      description: "Reconciliation match confidence percentage from 0 to 100",
+                    },
+                    reasonAr: {
+                      type: Type.STRING,
+                      description: "Short Arabic explanation of the match logic, targeting human reviewer (max 15 words)",
+                    },
+                    reasonEn: {
+                      type: Type.STRING,
+                      description: "Short English explanation of the match logic, targeting human reviewer (max 15 words)",
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      });
+    } catch (e: any) {
+      console.warn("gemini-2.5-flash reconciliation failed. Trying gemini-3.5-flash fallback...", e);
+      fallbackError = e;
+      
+      response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            required: ["matches"],
+            properties: {
+              matches: {
+                type: Type.ARRAY,
+                description: "Array of recommended matches found by Gemini",
+                items: {
+                  type: Type.OBJECT,
+                  required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
+                  properties: {
+                    type: {
+                      type: Type.STRING,
+                      description: "One of: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'",
+                    },
+                    bankOrigIdxs: {
+                      type: Type.ARRAY,
+                      items: { type: Type.INTEGER },
+                      description: "Original index integers (_origIdx) from the Bank Statement",
+                    },
+                    sysOrigIdxs: {
+                      type: Type.ARRAY,
+                      items: { type: Type.INTEGER },
+                      description: "Original index integers (_origIdx) from the System ledger",
+                    },
+                    confidence: {
+                      type: Type.INTEGER,
+                      description: "Reconciliation match confidence percentage from 0 to 100",
+                    },
+                    reasonAr: {
+                      type: Type.STRING,
+                      description: "Short Arabic explanation of the match logic, targeting human reviewer (max 15 words)",
+                    },
+                    reasonEn: {
+                      type: Type.STRING,
+                      description: "Short English explanation of the match logic, targeting human reviewer (max 15 words)",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
 
     const aiText = response.text;
     if (!aiText) {
-      throw new Error("Empty response received from Gemini API");
+      throw new Error("Empty response received from both Gemini models");
     }
 
     const data = JSON.parse(aiText);
