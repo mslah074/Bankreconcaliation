@@ -79,7 +79,7 @@ export default function App() {
   const [allAiMatchGroups, setAllAiMatchGroups] = useState<any[]>([]);
   const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || ((import.meta as any).env?.VITE_GEMINI_API_KEY || "AIzaSyA5_euN5C6oTN6ussX2PXnLiIzE8-_nrs4"));
+  const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || ((import.meta as any).env?.VITE_GEMINI_API_KEY || ""));
   const [showKeyInput, setShowKeyInput] = useState(false);
 
   // Web Worker States
@@ -98,10 +98,11 @@ export default function App() {
     return (T[lang] || T.en)[key as keyof typeof T.en] || key;
   };
 
-  // Sync lang dir in HTML document
+  // Sync lang dir and browser page title in HTML document
   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.title = lang === 'ar' ? 'أداة مطابقة البنك' : 'Bank Reconciliation Tool';
   }, [lang]);
 
   // Sync theme
