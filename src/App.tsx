@@ -1161,7 +1161,7 @@ export default function App() {
     setAiError(null);
     try {
       let data;
-      const cachedKey = localStorage.getItem("user_gemini_api_key") || "";
+      const cachedKey = clientApiKey || "";
 
       // Safe number builder for direct API call
       const getSafeVal = (colValue: any) => {
