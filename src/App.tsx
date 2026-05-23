@@ -109,6 +109,11 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Set document title
+  useEffect(() => {
+    document.title = 'bank reconciliation tool';
+  }, []);
+
   // Create clean instance of Web Worker
   useEffect(() => {
     workerRef.current = new Worker(
