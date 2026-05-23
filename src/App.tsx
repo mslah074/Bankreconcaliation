@@ -82,6 +82,11 @@ export default function App() {
   const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || ((import.meta as any).env?.VITE_GEMINI_API_KEY || ""));
   const [showKeyInput, setShowKeyInput] = useState(false);
 
+  const isStaticHost = useMemo(() => {
+    const hn = window.location.hostname;
+    return hn !== 'localhost' && hn !== '127.0.0.1' && !hn.endsWith('.run.app');
+  }, []);
+
   // Web Worker States
   const [isWorkerCalculating, setIsWorkerCalculating] = useState<boolean>(false);
   const [currentWorkerTask, setCurrentWorkerTask] = useState<string | null>(null);
@@ -1164,6 +1169,10 @@ export default function App() {
       let data;
       const cachedKey = clientApiKey || "";
 
+      if (isStaticHost && (!cachedKey || !cachedKey.trim())) {
+        throw new Error("STATIONARY_HOST_ERROR");
+      }
+
       // Safe number builder for direct API call
       const getSafeVal = (colValue: any) => {
         if (colValue === undefined || colValue === null) return 0;
@@ -1319,6 +1328,10 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
         }
 
         const responseText = await response.text();
+        if (responseText.trim().startsWith("<") || responseText.toLowerCase().includes("<!doctype html>") || responseText.toLowerCase().includes("<html")) {
+          throw new Error("STATIONARY_HOST_ERROR");
+        }
+
         if (!response.ok) {
           let errMsg = `Server returned status ${response.status}`;
           try {
@@ -1379,7 +1392,10 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
         e.message === "STATIONARY_HOST_ERROR" || 
         e.message.includes("Unexpected token '<'") || 
         e.message.includes("is not valid JSON") ||
-        e.message.includes("Unexpected token 'U'")
+        e.message.includes("Unexpected token 'U'") ||
+        e.message.includes("Failed to parse") ||
+        e.message.includes("JSON") ||
+        isStaticHost
       ) {
         setAiError(
           lang === 'ar' 
