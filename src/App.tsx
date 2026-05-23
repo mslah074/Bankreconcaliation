@@ -76,8 +76,11 @@ export default function App() {
 
   // AI Matching States
   const [aiMatchGroups, setAiMatchGroups] = useState<any[]>([]);
+  const [allAiMatchGroups, setAllAiMatchGroups] = useState<any[]>([]);
   const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || "");
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   // Web Worker States
   const [isWorkerCalculating, setIsWorkerCalculating] = useState<boolean>(false);
@@ -291,7 +294,7 @@ export default function App() {
     );
 
     markAccepted(
-      aiMatchGroups,
+      allAiMatchGroups,
       g => g.bankOrigIdxs || [],
       g => g.sysOrigIdxs || []
     );
@@ -316,6 +319,7 @@ export default function App() {
     exactNetMatchGroups,
     netMatchGroups,
     aiMatchGroups,
+    allAiMatchGroups,
     unifiedMatchGroups
   ]);
 
@@ -388,7 +392,7 @@ export default function App() {
       }
     });
 
-    iterGroups(aiMatchGroups, g => {
+    iterGroups(allAiMatchGroups, g => {
       const lbl = t('statusAi') + t('statusPhase2');
       (g.bankOrigIdxs || []).forEach((idx: number) => {
         const r = p2BankOrig.find(x => x._origIdx === idx);
@@ -410,6 +414,7 @@ export default function App() {
     exactNetMatchGroups,
     netMatchGroups,
     aiMatchGroups,
+    allAiMatchGroups,
     unifiedMatchGroups,
     p2BankOrig
   ]);
@@ -482,7 +487,7 @@ export default function App() {
       }
     });
 
-    iterGroups(aiMatchGroups, g => {
+    iterGroups(allAiMatchGroups, g => {
       const lbl = t('statusAi') + t('statusPhase2');
       (g.sysOrigIdxs || []).forEach((idx: number) => {
         const r = p2SysOrig.find(x => x._origIdx === idx);
@@ -504,6 +509,7 @@ export default function App() {
     exactNetMatchGroups,
     netMatchGroups,
     aiMatchGroups,
+    allAiMatchGroups,
     unifiedMatchGroups,
     p2SysOrig
   ]);
@@ -660,6 +666,8 @@ export default function App() {
     setOtmFuzzyMatchGroups([]);
     setExactNetMatchGroups([]);
     setNetMatchGroups([]);
+    setAiMatchGroups([]);
+    setAllAiMatchGroups([]);
 
     setIsReconciliationRan(true);
     setIsPhase2Locked(false);
@@ -1070,6 +1078,7 @@ export default function App() {
         checkAndRejectConflicts(exactNetMatchGroups);
         checkAndRejectConflicts(netMatchGroups);
         checkAndRejectConflicts(aiMatchGroups);
+        checkAndRejectConflicts(allAiMatchGroups);
         checkAndRejectConflicts(unifiedMatchGroups);
       }
 
@@ -1151,19 +1160,144 @@ export default function App() {
     setIsAiCalculating(true);
     setAiError(null);
     try {
-      const response = await fetch("/api/gemini/reconcile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bankRows: bankRem,
-          sysRows: sysRem,
-          bankMapping,
-          sysMapping
-        })
-      });
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || "An error occurred with Gemini");
+      let data;
+      const cachedKey = localStorage.getItem("user_gemini_api_key") || "";
+
+      // Safe number builder for direct API call
+      const getSafeVal = (colValue: any) => {
+        if (colValue === undefined || colValue === null) return 0;
+        let s = String(colValue).trim();
+        const arabicNums = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+        const persianNums = [/۰/g, /۱/g, /۲/g, /۳/g, /۴/g, /۵/g, /۶/g, /۷/g, /٨/g, /٩/g];
+        for (let i = 0; i < 10; i++) {
+          s = s.replace(arabicNums[i], String(i));
+          s = s.replace(persianNums[i], String(i));
+        }
+        const v = parseFloat(s.replace(/[, ]/g, '').replace(/[^0-9.\-]/g, ''));
+        return isNaN(v) ? 0 : v;
+      };
+
+      if (cachedKey && cachedKey.trim()) {
+        // Direct Client-Side Call to Gemini API (Runs on GitHub/Cloudflare Pages)
+        const maxItems = 100;
+        const limitedBank = bankRem.slice(0, maxItems);
+        const limitedSys = sysRem.slice(0, maxItems);
+
+        if (limitedBank.length === 0 || limitedSys.length === 0) {
+          setAiMatchGroups([]);
+          return;
+        }
+
+        const prompt = `You are an expert, bilingual Arabic-English double-entry accounting auditor. Your task is to analyze unmatched Bank Statement items and System ERP entries to find high-confidence reconciliation matches.
+
+STRICT DOUBLE-ENTRY BALANCE MANDATE:
+An accounting match is strictly INVALID unless it balances mathematically.
+For every match group:
+1. Calculate the TOTAL Bank Amount (the active debit or credit) for all selected bank items in the group.
+2. Calculate the TOTAL System Amount (the active debit or credit) for all selected system items in the group.
+3. These sum totals MUST be identical (or within a tiny variance under 1-2% for potential transfer fees/bank charges). Never suggest matches where the sum totals do not balance.
+4. If there are no logically or mathematically sound matches, simply return empty matches: {"matches": []}. Do not make random guesses or "best effort" combinations that do not balance.
+
+GUIDELINES FOR BILINGUAL ARABIC & ENGLISH MATCHING:
+- Date Proximity: Matched items should usually occur within 1-14 days of each other. Allow a wider window (up to 14 days) if amounts are unique and descriptions match.
+- Description & Semantics: Look for similar words, business entity types, and common English-Arabic counterparts.
+  * Counterparts: Match "الراجحي" with "Alrajhi", "فودافون" with "Vodafone", "الاتصالات" with "STC" or "telecom".
+  * Accounting keywords: "سداد" (payment), "تحويل" (transfer), "فاتورة" (invoice), "إيداع" (deposit), "رواتب" (salaries/payroll), "عميل" (client), "مورد" (supplier).
+  * Arabic Norm: Strip / ignore prefix "ال" (the), normalize "أإآ" to "ا", and "ة" to "e/h" conceptually to find semantic relations (e.g., "الشركة" and "شركة" are the same; "الراجحي" and "راجحي" are the same).
+- Reference & Invoice Numbers: If descriptions contain matching numbers (e.g., invoice "Inv-2024-998" or reference "998"), they are very strong match indicators even if the names are slightly different!
+- Grouping: A group can be 'one-to-one', 'one-to-many', 'many-to-one', or 'many-to-many'.
+
+Bank Statement (Unmatched, max ${maxItems} items):
+${JSON.stringify(
+  limitedBank.map((b: any) => ({
+    id: b._origIdx,
+    date: b[bankMapping.date] || b.Date || "",
+    desc: b[bankMapping.desc] || b.Description || "",
+    debit: getSafeVal(b[bankMapping.debit]),
+    credit: getSafeVal(b[bankMapping.credit]),
+  }))
+)}
+
+System Transactions (Unmatched, max ${maxItems} items):
+${JSON.stringify(
+  limitedSys.map((s: any) => ({
+    id: s._origIdx,
+    date: s[sysMapping.date] || s.Date || "",
+    desc: s[sysMapping.desc] || s.Description || "",
+    debit: getSafeVal(s[sysMapping.debit]),
+    credit: getSafeVal(s[sysMapping.credit]),
+  }))
+)}
+
+Find up to 15 best proposed matches. Double check that every ID references an actual item index in the lists. Always output in the requested JSON structure.`;
+
+        // Direct request to Gemini API (supports both gemini-1.5-flash and gemini-2.5-flash)
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cachedKey.trim()}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                required: ["matches"],
+                properties: {
+                  matches: {
+                    type: "ARRAY",
+                    description: "Array of recommended matches found by Gemini",
+                    items: {
+                      type: "OBJECT",
+                      required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
+                      properties: {
+                        type: { type: "STRING" },
+                        bankOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
+                        sysOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
+                        confidence: { type: "INTEGER" },
+                        reasonAr: { type: "STRING" },
+                        reasonEn: { type: "STRING" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `Gemini API responded with status ${res.status}`);
+        }
+
+        const resJson = await res.json();
+        const cand = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!cand) {
+          throw new Error("Invalid or empty response structure from direct Gemini API");
+        }
+        const parsed = JSON.parse(cand);
+        data = { success: true, matches: parsed.matches || [] };
+      } else {
+        // Fallback to Express backend server
+        const response = await fetch("/api/gemini/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bankRows: bankRem,
+            sysRows: sysRem,
+            bankMapping,
+            sysMapping
+          })
+        });
+
+        if (response.status === 404) {
+          throw new Error("STATIONARY_HOST_ERROR");
+        }
+
+        data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || "An error occurred with Gemini");
+        }
       }
 
       // Add decision keys to each match
@@ -1173,6 +1307,15 @@ export default function App() {
       }));
 
       setAiMatchGroups(matchedWithKeys);
+      setAllAiMatchGroups(prev => {
+        const next = [...prev];
+        matchedWithKeys.forEach((m: any) => {
+          if (!next.some(x => x._decKey === m._decKey)) {
+            next.push(m);
+          }
+        });
+        return next;
+      });
 
       // Initialize decisions as undefined or pending
       setDecisions(prev => {
@@ -1187,7 +1330,21 @@ export default function App() {
 
     } catch (e: any) {
       console.error(e);
-      setAiError(e.message || "Failed to fetch intelligent recommendations from Gemini model.");
+      if (
+        e.message === "STATIONARY_HOST_ERROR" || 
+        e.message.includes("Unexpected token '<'") || 
+        e.message.includes("is not valid JSON") ||
+        e.message.includes("Unexpected token 'U'")
+      ) {
+        setAiError(
+          lang === 'ar' 
+            ? "يبدو أنك قمت بنشر التطبيق على استضافة استاتيكية (مثل GitHub Pages أو Cloudflare Pages) بدون خادم تفاعلي. يُرجى توفير مفتاح Gemini API الشخصي الخاص بك في لوحة الإعدادات أدناه لتشغيل المطابقة الذكية مباشرة ومجاناً من المتصفح."
+            : "It seems the app is hosted on a static server (like Cloudflare Pages or GitHub Pages) with no running back-end server. Please configure your personal Gemini API Key in the settings below to run smart reconciliation securely from your browser."
+        );
+        setShowKeyInput(true);
+      } else {
+        setAiError(e.message || "Failed to fetch intelligent recommendations from Gemini model.");
+      }
     } finally {
       setIsAiCalculating(false);
     }
@@ -1694,6 +1851,69 @@ export default function App() {
               <p className="text-xs text-[var(--text2)] mb-4 leading-normal">
                 {t('aiInfo')}
               </p>
+
+              {/* Personal Gemini API Key Configuration Support for Static Hosts (like Cloudflare/GitHub Pages) */}
+              <div className="mb-4 bg-[var(--bg2)] border border-[var(--border)] rounded-lg p-3 text-xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[var(--violet-text)] hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                    onClick={() => setShowKeyInput(!showKeyInput)}
+                  >
+                    ⚙️ {showKeyInput 
+                      ? (lang === 'ar' ? 'إخفاء إعدادات مفتاح API الشخصي' : 'Hide Personal API Key Settings')
+                      : (lang === 'ar' ? 'إعدادات مفتاح API الشخصي (إذا كنت تستخدم GitHub / Cloudflare)' : 'Personal API Key Settings (If using GitHub / Cloudflare)')}
+                  </button>
+                  {clientApiKey ? (
+                    <span className="text-[10px] text-emerald-600 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
+                      ● {lang === 'ar' ? 'المفتاح الشخصي نشط محلياً' : 'Personal Key Active'}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 flex items-center gap-1">
+                      ℹ {lang === 'ar' ? 'الاتصال بخادم التطبيق الافتراضي' : 'Default Server Connection'}
+                    </span>
+                  )}
+                </div>
+
+                {showKeyInput && (
+                  <div className="mt-3 space-y-3 pt-3 border-t border-[var(--border)] animate-in fade-in slide-in-from-top-1 duration-200">
+                    <p className="text-[var(--text2)] leading-relaxed">
+                      {lang === 'ar' 
+                        ? "عند رفع هذا التطبيق على استضافات ثابتة مثل GitHub Pages أو Cloudflare Pages، لا يتوافر خادم خلفي لتشغيل الذكاء الاصطناعي. لحل هذا، يمكنك توليد مفتاح API مجاني ووضعه هنا ليقوم التطبيق بطلب النتائج من متصفحك مباشرة وبسرية تامة."
+                        : "Since modern hosts like GitHub/Cloudflare Pages don't run a back-end, you can use your own FREE Gemini API key. Requests will be processed completely client-side in safety."}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-[var(--text)]">{lang === 'ar' ? '1. احصل على مفتاح مجاني من هنا:' : '1. Get your free API key here:'}</span>
+                      <a 
+                        href="https://aistudio.google.com/" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[var(--blue-text)] font-semibold underline hover:text-[var(--blue)] cursor-pointer"
+                      >
+                        Google AI Studio ↗
+                      </a>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="font-semibold text-[var(--text)]">{lang === 'ar' ? '2. أدخل مفتاح الـ API:' : '2. Enter the API Key:'}</span>
+                      <input
+                        type="password"
+                        placeholder={lang === 'ar' ? "أدخل مفتاح Gemini API هنا (مثال: AIzaSy...)" : "Enter Gemini API Key here (e.g., AIzaSy...)"}
+                        className="px-3 py-2 text-xs bg-[var(--bg)] border border-[var(--border)] rounded text-[var(--text)] focus:outline-none focus:border-[var(--violet)] w-full font-mono"
+                        value={clientApiKey}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          setClientApiKey(val);
+                          if (val) {
+                            localStorage.setItem("user_gemini_api_key", val);
+                          } else {
+                            localStorage.removeItem("user_gemini_api_key");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="flex gap-3 items-center flex-wrap">
                 {isAiCalculating ? (

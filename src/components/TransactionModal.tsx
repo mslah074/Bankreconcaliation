@@ -45,15 +45,17 @@ export default function TransactionModal({
       : Object.keys(row).filter(k => !INTERNAL.has(k));
 
     return (
-      <div className="detail-grid gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-1.5 text-xs">
         {keys.map(k => {
           const v = row[k];
           if (v === undefined || v === null || v === '') return null;
           const isNum = typeof v === 'number' || (!isNaN(parseFloat(String(v).replace(/,/g, ''))) && String(v).trim() !== '');
+          const isDesc = k.toLowerCase().includes('desc') || k.includes('البيان') || String(v).length > 25;
+          const colSpan = isDesc ? 'col-span-2' : '';
           return (
-            <div key={k} className="detail-item bg-[var(--bg3)] border border-[var(--border)] rounded p-2 md:p-2.5">
-              <div className="detail-key text-[10px] text-[var(--text3)] uppercase tracking-wider mb-0.5">{k}</div>
-              <div className={`detail-val text-xs md:text-sm text-[var(--text)] font-semibold ${isNum ? 'mono font-mono text-[var(--blue-text)]' : ''}`}>
+            <div key={k} className={`bg-[var(--bg3)] border border-[var(--border)] rounded px-2.5 py-1.5 flex flex-col justify-between min-h-[48px] ${colSpan}`}>
+              <div className="text-[10px] text-[var(--text3)] uppercase tracking-wider font-semibold leading-none mb-1 text-wrap" title={k}>{k}</div>
+              <div className={`text-xs text-[var(--text)] font-semibold break-words whitespace-pre-wrap ${isNum ? 'font-mono text-[var(--blue-text)]' : ''}`} title={String(v)}>
                 {String(v)}
               </div>
             </div>
@@ -67,27 +69,29 @@ export default function TransactionModal({
   const renderGroupList = (rows: any[], cols: string[]) => {
     const INTERNAL = new Set(['_i', '_amt', '_isSys', '_المبلغ', '_المصدر', '_origIdx', '_status']);
     return (
-      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+      <div className="flex flex-col gap-1.5 max-h-[450px] overflow-y-auto pr-1">
         {rows.map((r, idx) => {
           const keys = r && (cols && cols.length 
             ? cols.filter(c => c in r) 
             : Object.keys(r).filter(k => !INTERNAL.has(k))) || [];
 
           return (
-            <div key={idx} className="bg-[var(--bg3)] border border-[var(--border)] rounded-lg p-2.5 md:p-3 shadow-none">
-              <div className="text-[10px] font-bold text-[var(--teal)] mb-1 tracking-wider">ROW #{idx + 1}</div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <div key={idx} className="bg-[var(--bg3)] border border-[var(--border)] rounded p-2.5 shadow-none">
+              <div className="text-[9px] font-bold text-[var(--teal)] mb-1 tracking-wider">ENTRY #{idx + 1}</div>
+              <div className="grid grid-cols-2 gap-x-2.5 gap-y-1.5">
                 {keys.map(k => {
                   const v = r[k];
                   if (v === undefined || v === null || v === '') return null;
                   const isNum = typeof v === 'number' || (!isNaN(parseFloat(String(v).replace(/,/g, ''))) && String(v).trim() !== '');
+                  const isDesc = k.toLowerCase().includes('desc') || k.includes('البيان') || String(v).length > 25;
+                  const colSpan = isDesc ? 'col-span-2' : '';
                   return (
-                    <span key={k} className="inline-flex flex-col gap-0.5">
-                      <span className="text-[10px] text-[var(--text3)] uppercase font-medium tracking-wider">{k}</span>
-                      <span className={`text-[11px] md:text-[12px] font-semibold text-[var(--text)] ${isNum ? 'font-mono text-[var(--blue-text)]' : ''}`}>
+                    <div key={k} className={`flex flex-col gap-0.5 max-w-full overflow-hidden ${colSpan}`}>
+                      <span className="text-[9px] text-[var(--text3)] uppercase font-semibold tracking-wider leading-none" title={k}>{k}</span>
+                      <span className={`text-[11px] font-semibold text-[var(--text)] break-words whitespace-pre-wrap ${isNum ? 'font-mono text-[var(--blue-text)]' : ''}`} title={String(v)}>
                         {v}
                       </span>
-                    </span>
+                    </div>
                   );
                 })}
               </div>
@@ -100,10 +104,10 @@ export default function TransactionModal({
 
   return (
     <div key={currentDecKey} className="modal-overlay fixed inset-0 bg-black/65 backdrop-blur-sm z-1000 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="modal-box bg-[var(--bg2)] border border-[var(--border2)] rounded-[14px] shadow-[var(--shadow-md)] w-full max-w-[680px] max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="modal-box bg-[var(--bg2)] border border-[var(--border2)] rounded-[14px] shadow-[var(--shadow-md)] w-full max-w-[1200px] max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
         
         {/* Header */}
-        <div className="modal-header flex items-center justify-between p-4 md:p-5 border-b border-[var(--border)] sticky top-0 bg-[var(--bg2)] z-10">
+        <div className="modal-header flex items-center justify-between p-3.5 md:p-4 border-b border-[var(--border)] sticky top-0 bg-[var(--bg2)] z-10">
           <div className="modal-title font-bold text-[var(--text)] text-sm md:text-base flex items-center gap-2">
             <span>
               {modalType === 'fuzzy' ? '🔮' : modalType === 'exact-net' ? '🎯' : modalType === 'ai' ? '🤖' : modalType === 'unified' ? '⚡' : '⚖️'}
@@ -129,8 +133,8 @@ export default function TransactionModal({
         </div>
 
         {/* Body */}
-        <div className="modal-body p-4 md:p-6 overflow-y-auto flex-1 text-xs">
-          <div className="flex items-center gap-2.5 mb-5 flex-wrap">
+        <div className="modal-body p-4 md:p-5 overflow-y-auto flex-1 text-xs">
+          <div className="flex items-center gap-2.5 mb-4 flex-wrap">
             <span className={`match-type-badge text-xs px-3 py-1 font-bold rounded ${
               modalType === 'fuzzy' ? 'match-type-fuzzy text-[var(--violet-text)] fill-[var(--violet-dim)] border border-[var(--violet)]' :
               modalType === 'exact-net' ? 'match-type-p1 text-[var(--green-text)] bg-[var(--green-dim)] border border-[var(--green)]' :
@@ -153,153 +157,144 @@ export default function TransactionModal({
             )}
           </div>
 
-          {/* OTM / OTM-fuzzy visual branch logic */}
-          {(modalType === 'otm' || modalType === 'otm-fuzzy') ? (
-            <>
-              {/* Gross vs Single row split representation */}
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🏦 {selectedGroup.reversed ? t('sysRowTag') + ' (Multiple)' : t('bankRowTag') + ' (Multiple)'}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {selectedGroup.bankRows && selectedGroup.bankRows.length > 1 ? (
-                  renderGroupList(selectedGroup.bankRows, selectedGroup.reversed ? sysCols : bankCols)
-                ) : (
-                  renderDetailGrid(selectedGroup.bankRows?.[0] || {}, selectedGroup.reversed ? sysCols : bankCols)
-                )}
+          {/* Side-by-Side Unified Comparisons Container */}
+          {(modalType === 'ai' || modalType === 'unified') && (
+            <div className={`${modalType === 'unified' ? 'bg-[var(--blue-dim)]/40 border border-[var(--blue)]/40' : 'bg-[var(--violet-dim)]/40 border border-[var(--violet)]/40'} rounded-lg p-3 mb-4 flex flex-col gap-1 w-full animate-in fade-in`}>
+              <div className={`font-semibold ${modalType === 'unified' ? 'text-[var(--blue-text)]' : 'text-[var(--violet-text)]'} text-xs flex items-center gap-1.5`}>
+                <span>💡 {modalType === 'unified' ? (lang === 'ar' ? 'تفاصيل المطابقة المدمجة' : 'Unified Match Details') : t('aiReason')}:</span>
               </div>
-
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🗄️ {selectedGroup.reversed ? t('bankRowTag') + ' (Single)' : t('sysRowTag') + ' (Single)'}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {renderDetailGrid(selectedGroup.sysRow, selectedGroup.reversed ? bankCols : sysCols)}
-              </div>
-            </>
-          ) : (modalType === 'net' || modalType === 'exact-net') ? (
-            <>
-              {selectedGroup.netSide === 'bank' ? (
-                <>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🏦 {t('bankRowTag')} (Gross — Dr+Cr)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {selectedGroup.grossRows_bank ? (
-                      renderDetailGrid(selectedGroup.grossRows_bank[0], bankCols)
-                    ) : (
-                      renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], bankCols)
-                    )}
-                  </div>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🗄️ {t('sysRowTag')} (Net)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {renderDetailGrid(selectedGroup.netRow_sys || selectedGroup.netRow, sysCols)}
-                  </div>
-                </>
-              ) : selectedGroup.netSide === 'both' ? (
-                <>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🏦 {t('bankRowTag')} (Gross — Dr+Cr)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {renderGroupList([...(selectedGroup.bankDrRows || []), ...(selectedGroup.bankCrRows || [])], bankCols)}
-                  </div>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🗄️ {t('sysRowTag')} (Gross — Dr+Cr)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], sysCols)}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🏦 {t('bankRowTag')} (Net)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {renderDetailGrid(selectedGroup.netRow_bank || selectedGroup.netRow, bankCols)}
-                  </div>
-                  <div className="modal-section mb-5">
-                    <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                      🗄️ {t('sysRowTag')} (Gross — Dr+Cr)
-                      <div className="flex-1 h-px bg-[var(--border)]"></div>
-                    </div>
-                    {selectedGroup.grossRows_sys ? (
-                      renderDetailGrid(selectedGroup.grossRows_sys[0], sysCols)
-                    ) : (
-                      renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], sysCols)
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          ) : (modalType === 'ai' || modalType === 'unified') ? (
-            <>
-              {/* AI/Unified Reasoning */}
-              <div className={`${modalType === 'unified' ? 'bg-[var(--blue-dim)]/40 border border-[var(--blue)]/40' : 'bg-[var(--violet-dim)]/40 border border-[var(--violet)]/40'} rounded-lg p-3.5 mb-5 flex flex-col gap-1.5 animate-in fade-in`}>
-                <div className={`font-semibold ${modalType === 'unified' ? 'text-[var(--blue-text)]' : 'text-[var(--violet-text)]'} text-xs flex items-center gap-1.5`}>
-                  <span>💡 {modalType === 'unified' ? (lang === 'ar' ? 'تفاصيل المطابقة المدمجة' : 'Unified Match Details') : t('aiReason')}:</span>
-                </div>
-                <p className="text-xs text-[var(--text)] italic leading-relaxed">
-                  {lang === 'ar' ? selectedGroup.reasonAr : selectedGroup.reasonEn}
-                </p>
-              </div>
-
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🏦 {t('modalBankLabel')}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {selectedGroup.bankRows && selectedGroup.bankRows.length > 0 ? (
-                  renderGroupList(selectedGroup.bankRows, bankCols)
-                ) : (
-                  renderDetailGrid(selectedGroup.bankRow || {}, bankCols)
-                )}
-              </div>
-
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🗄️ {t('modalSysLabel')}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {selectedGroup.sysRows && selectedGroup.sysRows.length > 0 ? (
-                  renderGroupList(selectedGroup.sysRows, sysCols)
-                ) : (
-                  renderDetailGrid(selectedGroup.sysRow || {}, sysCols)
-                )}
-              </div>
-            </>
-          ) : (
-            // standard fuzzy layout
-            <>
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🏦 {t('modalBankLabel')}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {renderDetailGrid(selectedGroup.bankRow, bankCols)}
-              </div>
-
-              <div className="modal-section mb-5">
-                <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  🗄️ {t('modalSysLabel')}
-                  <div className="flex-1 h-px bg-[var(--border)]"></div>
-                </div>
-                {renderDetailGrid(selectedGroup.sysRow, sysCols)}
-              </div>
-            </>
+              <p className="text-xs text-[var(--text)] italic leading-relaxed">
+                {lang === 'ar' ? selectedGroup.reasonAr : selectedGroup.reasonEn}
+              </p>
+            </div>
           )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+            {/* OTM / OTM-fuzzy visual branch logic */}
+            {(modalType === 'otm' || modalType === 'otm-fuzzy') ? (
+              <>
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🏦 {selectedGroup.reversed ? t('sysRowTag') + ' (Multiple)' : t('bankRowTag') + ' (Multiple)'}
+                  </div>
+                  {selectedGroup.bankRows && selectedGroup.bankRows.length > 1 ? (
+                    renderGroupList(selectedGroup.bankRows, selectedGroup.reversed ? sysCols : bankCols)
+                  ) : (
+                    renderDetailGrid(selectedGroup.bankRows?.[0] || {}, selectedGroup.reversed ? sysCols : bankCols)
+                  )}
+                </div>
+
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🗄️ {selectedGroup.reversed ? t('bankRowTag') + ' (Single)' : t('sysRowTag') + ' (Single)'}
+                  </div>
+                  {renderDetailGrid(selectedGroup.sysRow, selectedGroup.reversed ? bankCols : sysCols)}
+                </div>
+              </>
+            ) : (modalType === 'net' || modalType === 'exact-net') ? (
+              <>
+                {selectedGroup.netSide === 'bank' ? (
+                  <>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🏦 {t('bankRowTag')} (Gross — Dr+Cr)
+                      </div>
+                      {selectedGroup.grossRows_bank ? (
+                        renderDetailGrid(selectedGroup.grossRows_bank[0], bankCols)
+                      ) : (
+                        renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], bankCols)
+                      )}
+                    </div>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🗄️ {t('sysRowTag')} (Net)
+                      </div>
+                      {renderDetailGrid(selectedGroup.netRow_sys || selectedGroup.netRow, sysCols)}
+                    </div>
+                  </>
+                ) : selectedGroup.netSide === 'both' ? (
+                  <>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🏦 {t('bankRowTag')} (Gross — Dr+Cr)
+                      </div>
+                      {renderGroupList([...(selectedGroup.bankDrRows || []), ...(selectedGroup.bankCrRows || [])], bankCols)}
+                    </div>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🗄️ {t('sysRowTag')} (Gross — Dr+Cr)
+                      </div>
+                      {renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], sysCols)}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🏦 {t('bankRowTag')} (Net)
+                      </div>
+                      {renderDetailGrid(selectedGroup.netRow_bank || selectedGroup.netRow, bankCols)}
+                    </div>
+                    <div className="modal-section mb-0">
+                      <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🗄️ {t('sysRowTag')} (Gross — Dr+Cr)
+                      </div>
+                      {selectedGroup.grossRows_sys ? (
+                        renderDetailGrid(selectedGroup.grossRows_sys[0], sysCols)
+                      ) : (
+                        renderGroupList([...(selectedGroup.drRows || []), ...(selectedGroup.crRows || [])], sysCols)
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (modalType === 'ai' || modalType === 'unified') ? (
+              <>
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🏦 {t('modalBankLabel')}
+                  </div>
+                  {selectedGroup.bankRows && selectedGroup.bankRows.length > 0 ? (
+                    renderGroupList(selectedGroup.bankRows, bankCols)
+                  ) : (
+                    renderDetailGrid(selectedGroup.bankRow || {}, bankCols)
+                  )}
+                </div>
+
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🗄️ {t('modalSysLabel')}
+                  </div>
+                  {selectedGroup.sysRows && selectedGroup.sysRows.length > 0 ? (
+                    renderGroupList(selectedGroup.sysRows, sysCols)
+                  ) : (
+                    renderDetailGrid(selectedGroup.sysRow || {}, sysCols)
+                  )}
+                </div>
+              </>
+            ) : (
+              // standard fuzzy layout
+              <>
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🏦 {t('modalBankLabel')}
+                  </div>
+                  {renderDetailGrid(selectedGroup.bankRow, bankCols)}
+                </div>
+
+                <div className="modal-section mb-0">
+                  <div className="modal-section-title text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🗄️ {t('modalSysLabel')}
+                  </div>
+                  {renderDetailGrid(selectedGroup.sysRow, sysCols)}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Footer actions */}
-        <div className="modal-footer flex gap-3 p-4 md:p-5 border-t border-[var(--border)] bg-[var(--bg3)] justify-between items-center rounded-b-xl">
+        <div className="modal-footer flex gap-3 p-3.5 md:p-4 border-t border-[var(--border)] bg-[var(--bg3)] justify-between items-center rounded-b-xl">
           <div className="text-xs text-[var(--text3)] font-mono">
             {dec ? (dec === 'accept' ? 'Current: Accepted' : 'Current: Rejected') : 'Current: Pending'}
           </div>
@@ -307,7 +302,7 @@ export default function TransactionModal({
             <button
               className={`btn px-5 py-2 text-sm rounded flex items-center gap-1.5 font-bold cursor-pointer hover:opacity-90 ${
                 dec === 'accept'
-                  ? 'bg-[var(--green)] text-white border-[var(--green)] shadow-lg'
+                  ? 'bg-[var(--green)] text-white border-[var(--green)]'
                   : 'bg-[var(--bg2)] text-[var(--text)] border-[var(--border)]'
               }`}
               onClick={() => onDecision('accept')}
