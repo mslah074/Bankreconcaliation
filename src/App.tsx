@@ -1266,17 +1266,40 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
           })
         });
 
+        const resText = await res.text();
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `Gemini API responded with status ${res.status}`);
+          let errMsg = `Gemini API responded with status ${res.status}`;
+          try {
+            const errData = JSON.parse(resText);
+            if (errData?.error?.message) {
+              errMsg += `: ${errData.error.message}`;
+            }
+          } catch (_) {
+            if (resText) {
+              errMsg += `: ${resText.slice(0, 150)}`;
+            }
+          }
+          throw new Error(errMsg);
         }
 
-        const resJson = await res.json();
+        let resJson;
+        try {
+          resJson = JSON.parse(resText);
+        } catch (e) {
+          throw new Error(`Failed to parse Gemini API response as JSON. Body preview: ${resText.slice(0, 150)}`);
+        }
+
         const cand = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!cand) {
-          throw new Error("Invalid or empty response structure from direct Gemini API");
+          throw new Error("Invalid or empty response structure from direct Gemini API. Please make sure your API key is fully active, correct, and has appropriate permissions.");
         }
-        const parsed = JSON.parse(cand);
+        
+        let parsed;
+        try {
+          parsed = JSON.parse(cand);
+        } catch (e) {
+          throw new Error(`Gemini returned an invalid matches format. Body: ${cand.slice(0, 150)}`);
+        }
         data = { success: true, matches: parsed.matches || [] };
       } else {
         // Fallback to Express backend server
