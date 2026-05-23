@@ -79,13 +79,8 @@ export default function App() {
   const [allAiMatchGroups, setAllAiMatchGroups] = useState<any[]>([]);
   const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || ((import.meta as any).env?.VITE_GEMINI_API_KEY || ""));
+  const [clientApiKey, setClientApiKey] = useState(() => localStorage.getItem("user_gemini_api_key") || "");
   const [showKeyInput, setShowKeyInput] = useState(false);
-
-  const isStaticHost = useMemo(() => {
-    const hn = window.location.hostname;
-    return hn !== 'localhost' && hn !== '127.0.0.1' && !hn.endsWith('.run.app');
-  }, []);
 
   // Web Worker States
   const [isWorkerCalculating, setIsWorkerCalculating] = useState<boolean>(false);
@@ -103,11 +98,10 @@ export default function App() {
     return (T[lang] || T.en)[key as keyof typeof T.en] || key;
   };
 
-  // Sync lang dir and browser page title in HTML document
+  // Sync lang dir in HTML document
   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    document.title = lang === 'ar' ? 'أداة مطابقة البنك' : 'Bank Reconciliation Tool';
   }, [lang]);
 
   // Sync theme
@@ -1167,11 +1161,7 @@ export default function App() {
     setAiError(null);
     try {
       let data;
-      const cachedKey = clientApiKey || "";
-
-      if (isStaticHost && (!cachedKey || !cachedKey.trim())) {
-        throw new Error("STATIONARY_HOST_ERROR");
-      }
+      const cachedKey = localStorage.getItem("user_gemini_api_key") || "";
 
       // Safe number builder for direct API call
       const getSafeVal = (colValue: any) => {
@@ -1275,40 +1265,17 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
           })
         });
 
-        const resText = await res.text();
         if (!res.ok) {
-          let errMsg = `Gemini API responded with status ${res.status}`;
-          try {
-            const errData = JSON.parse(resText);
-            if (errData?.error?.message) {
-              errMsg += `: ${errData.error.message}`;
-            }
-          } catch (_) {
-            if (resText) {
-              errMsg += `: ${resText.slice(0, 150)}`;
-            }
-          }
-          throw new Error(errMsg);
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `Gemini API responded with status ${res.status}`);
         }
 
-        let resJson;
-        try {
-          resJson = JSON.parse(resText);
-        } catch (e) {
-          throw new Error(`Failed to parse Gemini API response as JSON. Body preview: ${resText.slice(0, 150)}`);
-        }
-
+        const resJson = await res.json();
         const cand = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!cand) {
-          throw new Error("Invalid or empty response structure from direct Gemini API. Please make sure your API key is fully active, correct, and has appropriate permissions.");
+          throw new Error("Invalid or empty response structure from direct Gemini API");
         }
-        
-        let parsed;
-        try {
-          parsed = JSON.parse(cand);
-        } catch (e) {
-          throw new Error(`Gemini returned an invalid matches format. Body: ${cand.slice(0, 150)}`);
-        }
+        const parsed = JSON.parse(cand);
         data = { success: true, matches: parsed.matches || [] };
       } else {
         // Fallback to Express backend server
@@ -1327,32 +1294,7 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
           throw new Error("STATIONARY_HOST_ERROR");
         }
 
-        const responseText = await response.text();
-        if (responseText.trim().startsWith("<") || responseText.toLowerCase().includes("<!doctype html>") || responseText.toLowerCase().includes("<html")) {
-          throw new Error("STATIONARY_HOST_ERROR");
-        }
-
-        if (!response.ok) {
-          let errMsg = `Server returned status ${response.status}`;
-          try {
-            const errJson = JSON.parse(responseText);
-            if (errJson && errJson.error) {
-              errMsg += `: ${errJson.error}`;
-            }
-          } catch (_) {
-            if (responseText) {
-              errMsg += `: ${responseText.slice(0, 150)}`;
-            }
-          }
-          throw new Error(errMsg);
-        }
-
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          throw new Error(`Failed to parse server response as JSON. Body preview: ${responseText.slice(0, 150)}`);
-        }
-
+        data = await response.json();
         if (!data.success) {
           throw new Error(data.error || "An error occurred with Gemini");
         }
@@ -1392,10 +1334,7 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
         e.message === "STATIONARY_HOST_ERROR" || 
         e.message.includes("Unexpected token '<'") || 
         e.message.includes("is not valid JSON") ||
-        e.message.includes("Unexpected token 'U'") ||
-        e.message.includes("Failed to parse") ||
-        e.message.includes("JSON") ||
-        isStaticHost
+        e.message.includes("Unexpected token 'U'")
       ) {
         setAiError(
           lang === 'ar' 
