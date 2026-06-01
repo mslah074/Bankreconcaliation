@@ -888,7 +888,8 @@ export default function App() {
       const rows = bankRem.slice().sort((a, b) => a._origIdx - b._origIdx).map(r => {
         const o: any = {};
         bankCols.forEach(c => { o[c] = r[c]; });
-         o[mc] = t('statusUnmatched');
+        o[mc] = t('statusUnmatched');
+        o._origIdx = r._origIdx;
         return o;
       });
       return exportUsingOriginalWB(bankWB, rows, bankCols, mc, 'bank_final_unmatched.xlsx', getStatusCellStyle);
@@ -898,7 +899,8 @@ export default function App() {
       const rows = sysRem.slice().sort((a, b) => a._origIdx - b._origIdx).map(r => {
         const o: any = {};
         sysCols.forEach(c => { o[c] = r[c]; });
-         o[mc] = t('statusUnmatched');
+        o[mc] = t('statusUnmatched');
+        o._origIdx = r._origIdx;
         return o;
       });
       return exportUsingOriginalWB(sysWB, rows, sysCols, mc, 'sys_final_unmatched.xlsx', getStatusCellStyle);
@@ -909,6 +911,7 @@ export default function App() {
         const o: any = {};
         bankCols.forEach(c => { if (c in m.bank) o[c] = m.bank[c]; });
         o[mc] = t('statusP1');
+        o._origIdx = m.bank._origIdx;
         return o;
       });
       exportUsingOriginalWB(bankWB, bR, bankCols, mc, 'phase1_matched_bank.xlsx', getStatusCellStyle);
@@ -917,6 +920,7 @@ export default function App() {
         const o: any = {};
         sysCols.forEach(c => { if (c in m.sys) o[c] = m.sys[c]; });
         o[mc] = t('statusP1');
+        o._origIdx = m.sys._origIdx;
         return o;
       });
       exportUsingOriginalWB(sysWB, sR, sysCols, mc, 'phase1_matched_sys.xlsx', getStatusCellStyle);
@@ -928,6 +932,7 @@ export default function App() {
         const o: any = {};
         bankCols.forEach(c => { o[c] = row[c]; });
         o[mc] = label;
+        o._origIdx = row._origIdx;
         return o;
       });
       exportUsingOriginalWB(bankWB, bR, bankCols, mc, 'phase2_matches_bank.xlsx', getStatusCellStyle);
@@ -936,6 +941,7 @@ export default function App() {
         const o: any = {};
         sysCols.forEach(c => { o[c] = row[c]; });
         o[mc] = label;
+        o._origIdx = row._origIdx;
         return o;
       });
       exportUsingOriginalWB(sysWB, sR, sysCols, mc, 'phase2_matches_sys.xlsx', getStatusCellStyle);
@@ -947,6 +953,7 @@ export default function App() {
         const o: any = {};
         bankCols.forEach(c => { if (c in m.bank) o[c] = m.bank[c]; });
         o[mc] = t('statusP1');
+        o._origIdx = m.bank._origIdx;
         return o;
       });
 
@@ -954,6 +961,7 @@ export default function App() {
         const o: any = {};
         bankCols.forEach(c => { o[c] = row[c]; });
         o[mc] = label;
+        o._origIdx = row._origIdx;
         return o;
       });
 
@@ -961,6 +969,7 @@ export default function App() {
         const o: any = {};
         bankCols.forEach(c => { o[c] = r[c]; });
         o[mc] = t('statusUnmatched');
+        o._origIdx = r._origIdx;
         return o;
       });
 
@@ -972,6 +981,7 @@ export default function App() {
         const o: any = {};
         sysCols.forEach(c => { if (c in m.sys) o[c] = m.sys[c]; });
         o[mc] = t('statusP1');
+        o._origIdx = m.sys._origIdx;
         return o;
       });
 
@@ -979,6 +989,7 @@ export default function App() {
         const o: any = {};
         sysCols.forEach(c => { o[c] = row[c]; });
         o[mc] = label;
+        o._origIdx = row._origIdx;
         return o;
       });
 
@@ -986,6 +997,7 @@ export default function App() {
         const o: any = {};
         sysCols.forEach(c => { o[c] = r[c]; });
         o[mc] = t('statusUnmatched');
+        o._origIdx = r._origIdx;
         return o;
       });
 
@@ -1168,141 +1180,26 @@ export default function App() {
       let data;
       const cachedKey = localStorage.getItem("user_gemini_api_key") || "";
 
-      // Safe number builder for direct API call
-      const getSafeVal = (colValue: any) => {
-        if (colValue === undefined || colValue === null) return 0;
-        let s = String(colValue).trim();
-        const arabicNums = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
-        const persianNums = [/۰/g, /۱/g, /۲/g, /۳/g, /۴/g, /۵/g, /۶/g, /۷/g, /٨/g, /٩/g];
-        for (let i = 0; i < 10; i++) {
-          s = s.replace(arabicNums[i], String(i));
-          s = s.replace(persianNums[i], String(i));
-        }
-        const v = parseFloat(s.replace(/[, ]/g, '').replace(/[^0-9.\-]/g, ''));
-        return isNaN(v) ? 0 : v;
-      };
+      // Call Express backend server
+      const response = await fetch("/api/gemini/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bankRows: bankRem,
+          sysRows: sysRem,
+          bankMapping,
+          sysMapping,
+          clientApiKey: cachedKey ? cachedKey.trim() : ""
+        })
+      });
 
-      if (cachedKey && cachedKey.trim()) {
-        // Direct Client-Side Call to Gemini API (Runs on GitHub/Cloudflare Pages)
-        const maxItems = 100;
-        const limitedBank = bankRem.slice(0, maxItems);
-        const limitedSys = sysRem.slice(0, maxItems);
+      if (response.status === 404) {
+        throw new Error("STATIONARY_HOST_ERROR");
+      }
 
-        if (limitedBank.length === 0 || limitedSys.length === 0) {
-          setAiMatchGroups([]);
-          return;
-        }
-
-        const prompt = `You are an expert, bilingual Arabic-English double-entry accounting auditor. Your task is to analyze unmatched Bank Statement items and System ERP entries to find high-confidence reconciliation matches.
-
-STRICT DOUBLE-ENTRY BALANCE MANDATE:
-An accounting match is strictly INVALID unless it balances mathematically.
-For every match group:
-1. Calculate the TOTAL Bank Amount (the active debit or credit) for all selected bank items in the group.
-2. Calculate the TOTAL System Amount (the active debit or credit) for all selected system items in the group.
-3. These sum totals MUST be identical (or within a tiny variance under 1-2% for potential transfer fees/bank charges). Never suggest matches where the sum totals do not balance.
-4. If there are no logically or mathematically sound matches, simply return empty matches: {"matches": []}. Do not make random guesses or "best effort" combinations that do not balance.
-
-GUIDELINES FOR BILINGUAL ARABIC & ENGLISH MATCHING:
-- Date Proximity: Matched items should usually occur within 1-14 days of each other. Allow a wider window (up to 14 days) if amounts are unique and descriptions match.
-- Description & Semantics: Look for similar words, business entity types, and common English-Arabic counterparts.
-  * Counterparts: Match "الراجحي" with "Alrajhi", "فودافون" with "Vodafone", "الاتصالات" with "STC" or "telecom".
-  * Accounting keywords: "سداد" (payment), "تحويل" (transfer), "فاتورة" (invoice), "إيداع" (deposit), "رواتب" (salaries/payroll), "عميل" (client), "مورد" (supplier).
-  * Arabic Norm: Strip / ignore prefix "ال" (the), normalize "أإآ" to "ا", and "ة" to "e/h" conceptually to find semantic relations (e.g., "الشركة" and "شركة" are the same; "الراجحي" and "راجحي" are the same).
-- Reference & Invoice Numbers: If descriptions contain matching numbers (e.g., invoice "Inv-2024-998" or reference "998"), they are very strong match indicators even if the names are slightly different!
-- Grouping: A group can be 'one-to-one', 'one-to-many', 'many-to-one', or 'many-to-many'.
-
-Bank Statement (Unmatched, max ${maxItems} items):
-${JSON.stringify(
-  limitedBank.map((b: any) => ({
-    id: b._origIdx,
-    date: b[bankMapping.date] || b.Date || "",
-    desc: b[bankMapping.desc] || b.Description || "",
-    debit: getSafeVal(b[bankMapping.debit]),
-    credit: getSafeVal(b[bankMapping.credit]),
-  }))
-)}
-
-System Transactions (Unmatched, max ${maxItems} items):
-${JSON.stringify(
-  limitedSys.map((s: any) => ({
-    id: s._origIdx,
-    date: s[sysMapping.date] || s.Date || "",
-    desc: s[sysMapping.desc] || s.Description || "",
-    debit: getSafeVal(s[sysMapping.debit]),
-    credit: getSafeVal(s[sysMapping.credit]),
-  }))
-)}
-
-Find up to 15 best proposed matches. Double check that every ID references an actual item index in the lists. Always output in the requested JSON structure.`;
-
-        // Direct request to Gemini API (supports both gemini-1.5-flash and gemini-2.5-flash)
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cachedKey.trim()}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "OBJECT",
-                required: ["matches"],
-                properties: {
-                  matches: {
-                    type: "ARRAY",
-                    description: "Array of recommended matches found by Gemini",
-                    items: {
-                      type: "OBJECT",
-                      required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
-                      properties: {
-                        type: { type: "STRING" },
-                        bankOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
-                        sysOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
-                        confidence: { type: "INTEGER" },
-                        reasonAr: { type: "STRING" },
-                        reasonEn: { type: "STRING" }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          })
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `Gemini API responded with status ${res.status}`);
-        }
-
-        const resJson = await res.json();
-        const cand = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!cand) {
-          throw new Error("Invalid or empty response structure from direct Gemini API");
-        }
-        const parsed = JSON.parse(cand);
-        data = { success: true, matches: parsed.matches || [] };
-      } else {
-        // Fallback to Express backend server
-        const response = await fetch("/api/gemini/reconcile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bankRows: bankRem,
-            sysRows: sysRem,
-            bankMapping,
-            sysMapping
-          })
-        });
-
-        if (response.status === 404) {
-          throw new Error("STATIONARY_HOST_ERROR");
-        }
-
-        data = await response.json();
-        if (!data.success) {
-          throw new Error(data.error || "An error occurred with Gemini");
-        }
+      data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "An error occurred with Gemini");
       }
 
       // Add decision keys to each match
@@ -1358,8 +1255,9 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
   // Computed metrics for showing match rates
   const matchPctVal = useMemo(() => {
     const total = bankData.length;
-    return total ? Math.round((matched.length / total) * 100) : 0;
-  }, [bankData, matched]);
+    const matchedCount = matched.length + (acceptedBankRows?.length || 0);
+    return total ? Math.min(100, Math.round((matchedCount / total) * 100)) : 0;
+  }, [bankData, matched, acceptedBankRows]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors antialiased pb-12 flex flex-col">
@@ -1564,22 +1462,22 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
                     <div className="stat-lbl">{t('sysTotal')}</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-val val-green">{matched.length.toLocaleString()}</div>
+                    <div className="stat-val val-green">{(matched.length + (acceptedBankRows?.length || 0)).toLocaleString()}</div>
                     <div className="stat-lbl">{t('matched')}</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-val val-red">{(bankOnly.length + sysOnly.length).toLocaleString()}</div>
+                    <div className="stat-val val-red">{(bankRem.length + sysRem.length).toLocaleString()}</div>
                     <div className="stat-lbl">{t('unmatched')}</div>
                   </div>
                 </div>
 
                 <div className="stats-grid stats-grid-2">
                   <div className="stat-card">
-                    <div className="stat-val val-amber">{bankOnly.length.toLocaleString()}</div>
+                    <div className="stat-val val-amber">{bankRem.length.toLocaleString()}</div>
                     <div className="stat-lbl">{t('bankOnly')}</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-val val-amber">{sysOnly.length.toLocaleString()}</div>
+                    <div className="stat-val val-amber">{sysRem.length.toLocaleString()}</div>
                     <div className="stat-lbl">{t('sysOnly')}</div>
                   </div>
                 </div>
@@ -1588,7 +1486,7 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
                   <div className="progress-bar" style={{ width: `${matchPctVal}%` }}></div>
                 </div>
                 <div className="note font-semibold text-xs text-[var(--text2)]">
-                  {t('matchPct')}{matchPctVal}% ({matched.length.toLocaleString()}{t('of')}{bankData.length.toLocaleString()})
+                  {t('matchPct')}{matchPctVal}% ({(matched.length + (acceptedBankRows?.length || 0)).toLocaleString()}{t('of')}{bankData.length.toLocaleString()})
                 </div>
 
                 {/* Differences View Table */}
@@ -1628,8 +1526,8 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
                         </tr>
                       </thead>
                       <tbody>
-                        {bankOnly.slice(0, 100).map((r, i) => (
-                          <tr key={`b-${i}`} className="row-bank">
+                        {bankRem.slice(0, 100).map((r, i) => (
+                          <tr key={`b-${r._origIdx}`} className="row-bank">
                             <td>
                               <span className="tag tag-bank">{t('bankRowTag')}</span>
                             </td>
@@ -1640,8 +1538,8 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
                             {bankMapping.desc && <td className="truncate max-w-[200px]" title={r[bankMapping.desc]}>{r[bankMapping.desc]}</td>}
                           </tr>
                         ))}
-                        {sysOnly.slice(0, 100).map((r, i) => (
-                          <tr key={`s-${i}`} className="row-sys">
+                        {sysRem.slice(0, 100).map((r, i) => (
+                          <tr key={`s-${r._origIdx}`} className="row-sys">
                             <td>
                               <span className="tag tag-sys">{t('sysRowTag')}</span>
                             </td>
@@ -1652,7 +1550,7 @@ Find up to 15 best proposed matches. Double check that every ID references an ac
                             {sysMapping.desc && <td className="truncate max-w-[200px]" title={r[sysMapping.desc]}>{r[sysMapping.desc]}</td>}
                           </tr>
                         ))}
-                        {bankOnly.length === 0 && sysOnly.length === 0 && (
+                        {bankRem.length === 0 && sysRem.length === 0 && (
                           <tr>
                             <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text3)' }}>
                               {t('noDiff')}

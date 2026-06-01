@@ -46,15 +46,27 @@ const ai = new GoogleGenAI({
 // AI Reconciliation Endpoint
 app.post("/api/gemini/reconcile", async (req, res) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const { bankRows, sysRows, bankMapping, sysMapping, clientApiKey } = req.body;
+
+    const apiKey = (clientApiKey && clientApiKey.trim() !== "")
+      ? clientApiKey.trim()
+      : process.env.GEMINI_API_KEY;
+
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
       return res.status(200).json({
         success: false,
-        error: "GEMINI_API_KEY is not configured on the server. Please check the Secrets panel in Settings.",
+        error: "GEMINI_API_KEY is not configured. Please supply your personal Gemini API key under 'Personal API Key Settings' in the app.",
       });
     }
 
-    const { bankRows, sysRows, bankMapping, sysMapping } = req.body;
+    const taskAi = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
 
     if (!bankRows || !sysRows || !bankMapping || !sysMapping) {
       return res.status(400).json({
@@ -119,7 +131,7 @@ ${JSON.stringify(
 
 Find up to 15 best proposed matches. Double check that every ID references an actual item index in the lists. Always output in the requested JSON structure.`;
 
-    const response = await ai.models.generateContent({
+    const response = await taskAi.models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
