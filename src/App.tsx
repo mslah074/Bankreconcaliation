@@ -1180,26 +1180,176 @@ export default function App() {
       let data;
       const cachedKey = localStorage.getItem("user_gemini_api_key") || "";
 
-      // Call Express backend server
-      const response = await fetch("/api/gemini/reconcile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bankRows: bankRem,
-          sysRows: sysRem,
-          bankMapping,
-          sysMapping,
-          clientApiKey: cachedKey ? cachedKey.trim() : ""
-        })
-      });
+      // Safe number builder for direct API call and cleaning
+      const getSafeVal = (colValue: any) => {
+        if (colValue === undefined || colValue === null) return 0;
+        let s = String(colValue).trim();
+        const arabicNums = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+        const persianNums = [/۰/g, /۱/g, /۲/g, /۳/g, /۴/g, /۵/g, /۶/g, /٧/g, /٨/g, /٩/g];
+        for (let i = 0; i < 10; i++) {
+          s = s.replace(arabicNums[i], String(i));
+          s = s.replace(persianNums[i], String(i));
+        }
+        const v = parseFloat(s.replace(/[, ]/g, '').replace(/[^0-9.\-]/g, ''));
+        return isNaN(v) ? 0 : v;
+      };
 
-      if (response.status === 404) {
-        throw new Error("STATIONARY_HOST_ERROR");
+      // Process only the active batch of remaining items to avoid huge payloads and browser crashes
+      const maxItems = 100;
+      const limitedBank = bankRem.slice(0, maxItems);
+      const limitedSys = sysRem.slice(0, maxItems);
+
+      if (limitedBank.length === 0 || limitedSys.length === 0) {
+        setAiMatchGroups([]);
+        setIsAiCalculating(false);
+        return;
       }
 
-      data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || "An error occurred with Gemini");
+      // Compact payloads with only required keys to dramatically reduce upload size
+      const cleanBankRows = limitedBank.map((b: any) => ({
+        _origIdx: b._origIdx,
+        [bankMapping.date]: b[bankMapping.date],
+        [bankMapping.desc]: b[bankMapping.desc],
+        [bankMapping.debit]: b[bankMapping.debit],
+        [bankMapping.credit]: b[bankMapping.credit],
+      }));
+
+      const cleanSysRows = limitedSys.map((s: any) => ({
+        _origIdx: s._origIdx,
+        [sysMapping.date]: s[sysMapping.date],
+        [sysMapping.desc]: s[sysMapping.desc],
+        [sysMapping.debit]: s[sysMapping.debit],
+        [sysMapping.credit]: s[sysMapping.credit],
+      }));
+
+      if (cachedKey && cachedKey.trim()) {
+        const promptText = `You are an expert, bilingual Arabic-English double-entry accounting auditor. Your task is to analyze unmatched Bank Statement items and System ERP entries to find high-confidence reconciliation matches.
+
+STRICT DOUBLE-ENTRY BALANCE MANDATE:
+An accounting match is strictly INVALID unless it balances mathematically.
+For every match group:
+1. Calculate the TOTAL Bank Amount (the active debit or credit) for all selected bank items in the group.
+2. Calculate the TOTAL System Amount (the active debit or credit) for all selected system items in the group.
+3. These sum totals MUST be identical (or within a tiny variance under 1-2% for potential transfer fees/bank charges). Never suggest matches where the sum totals do not balance.
+4. If there are no logically or mathematically sound matches, simply return empty matches: {"matches": []}. Do not make random guesses or "best effort" combinations that do not balance.
+
+GUIDELINES FOR BILINGUAL ARABIC & ENGLISH MATCHING:
+- Date Proximity: Matched items should usually occur within 1-14 days of each other. Allow a wider window (up to 14 days) if amounts are unique and descriptions match.
+- Description & Semantics: Look for similar words, business entity types, and common English-Arabic counterparts.
+  * Counterparts: Match "الراجحي" with "Alrajhi", "فودافون" with "Vodafone", "الاتصالات" with "STC" or "telecom".
+  * Accounting keywords: "سداد" (payment), "تحويل" (transfer), "فاتورة" (invoice), "إيداع" (deposit), "رواتب" (salaries/payroll), "عميل" (client), "مورد" (supplier).
+  * Arabic Norm: Strip / ignore prefix "ال" (the), normalize "أإآ" to "ا", and "ة" to "e/h" conceptually to find semantic relations (e.g., "الشركة" and "شركة" are the same; "الراجحي" and "راجحي" are the same).
+- Reference & Invoice Numbers: If descriptions contain matching numbers (e.g., invoice "Inv-2024-998" or reference "998"), they are very strong match indicators even if the names are slightly different!
+- Grouping: A group can be 'one-to-one', 'one-to-many', 'many-to-one', or 'many-to-many'.
+
+Bank Statement (Unmatched, max ${maxItems} items):
+${JSON.stringify(
+  cleanBankRows.map((b: any) => ({
+    id: b._origIdx,
+    date: b[bankMapping.date] || b.Date || "",
+    desc: b[bankMapping.desc] || b.Description || "",
+    debit: getSafeVal(b[bankMapping.debit]),
+    credit: getSafeVal(b[bankMapping.credit]),
+  }))
+)}
+
+System Transactions (Unmatched, max ${maxItems} items):
+${JSON.stringify(
+  cleanSysRows.map((s: any) => ({
+    id: s._origIdx,
+    date: s[sysMapping.date] || s.Date || "",
+    desc: s[sysMapping.desc] || s.Description || "",
+    debit: getSafeVal(s[sysMapping.debit]),
+    credit: getSafeVal(s[sysMapping.credit]),
+  }))
+)}
+
+Find up to 15 best proposed matches. Double check that every ID references an actual item index in the lists. Always output in the requested JSON structure.`;
+
+        // Direct request to Gemini API (supports both gemini-1.5-flash and gemini-2.5-flash)
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cachedKey.trim()}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                required: ["matches"],
+                properties: {
+                  matches: {
+                    type: "ARRAY",
+                    description: "Array of recommended matches found by Gemini",
+                    items: {
+                      type: "OBJECT",
+                      required: ["type", "bankOrigIdxs", "sysOrigIdxs", "confidence", "reasonAr", "reasonEn"],
+                      properties: {
+                        type: { type: "STRING" },
+                        bankOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
+                        sysOrigIdxs: { type: "ARRAY", items: { type: "INTEGER" } },
+                        confidence: { type: "INTEGER" },
+                        reasonAr: { type: "STRING" },
+                        reasonEn: { type: "STRING" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `Gemini API responded with status ${res.status}`);
+        }
+
+        const resJson = await res.json();
+        const cand = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!cand) {
+          throw new Error("Invalid or empty response structure from direct Gemini API");
+        }
+        const parsed = JSON.parse(cand);
+        data = { success: true, matches: parsed.matches || [] };
+      } else {
+        // Call Express backend server with compacted payload
+        const response = await fetch("/api/gemini/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bankRows: cleanBankRows,
+            sysRows: cleanSysRows,
+            bankMapping,
+            sysMapping,
+            clientApiKey: ""
+          })
+        });
+
+        if (response.status === 404) {
+          throw new Error("STATIONARY_HOST_ERROR");
+        }
+
+        let responseText = "";
+        try {
+          responseText = await response.text();
+        } catch (readErr) {
+          throw new Error("No response body received from the backend API.");
+        }
+
+        if (!response.ok) {
+          throw new Error(`The backend server returned an error (Status ${response.status}): ${responseText.slice(0, 150)}`);
+        }
+
+        try {
+          data = JSON.parse(responseText);
+        } catch (jsonErr) {
+          throw new Error(`The server response could not be parsed as JSON: ${responseText.slice(0, 150)}`);
+        }
+
+        if (!data || !data.success) {
+          throw new Error(data?.error || "AI Matching backend reported failure.");
+        }
       }
 
       // Add decision keys to each match
